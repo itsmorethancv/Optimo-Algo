@@ -1,4 +1,4 @@
 {
-    "model": "qwen2.5-coder:1.5b",
+    "model": "gemma4:31b-cloud",
     "extra_ignores": []
 }

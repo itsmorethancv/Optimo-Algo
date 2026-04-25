@@ -29,7 +29,10 @@ def repair_json(malformed_json: str) -> str:
 SYSTEM_PROMPT = """You are a technical code analyzer. 
 TASK: Extract logical structure and high-level briefs from code.
 RESPONSE: Output ONLY valid JSON with keys "s", "c", "m".
-RULES: Be technical. Do NOT parrot the instructions. If empty, return []."""
+RULES: 
+1. Use "caveman-language" for "s": NO VOWELS, no articles (a, an, the), use only one form of verb,and small and simple english words.
+2. Be extremely brief. Just enough words to understand logic.
+3. If empty, return []."""
 
 def extract_imports_from_code(file_content: str) -> list[str]:
     """
@@ -123,12 +126,12 @@ File: {filename}
 {chunk_content}
 </CODE_SEGMENT>
 
-<TASK>
-1. Synthesize a technical brief for the code above. Store in "s".
-2. Extract all class names into "c". 
-3. Extract all function/method names into "m".
-4. Output strict JSON only.
-</TASK>"""
+        <TASK>
+        1. Synthesize a caveman-style technical brief (NO VOWELS, no articles, one verb form) for the code above. Store in "s".
+        2. Extract all class names into "c". 
+        3. Extract all function/method names into "m".
+        4. Output strict JSON only.
+        </TASK>"""
 
         success = False
         for attempt in range(retries + 1):

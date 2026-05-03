@@ -47,6 +47,7 @@ def get_files_to_scan(directory_path: str, ignore_patterns: list[str] = None):
              ".git/", "node_modules/", "venv/", ".venv/", "__pycache__/", 
              "*.pyc", "*.jpg", "*.png", "*.mp4", "*.exe", ".env",
              "release/", ".gitignore", "dist-electron/", "dist/",
+             "build/", "*.egg-info/", "develop-eggs/",
              "context.toon", ".optimo-algo.json"
          ]
          # Add user-defined ignores from config

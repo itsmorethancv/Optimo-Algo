@@ -31,8 +31,11 @@ The resulting context is compiled into a `.toon` file. TOON is a highly minified
 1. **Ingestion:** The user defines the working directory. Optimo-Algo maps the standard folder tree (ignoring `.git`, `node_modules`, etc.).
 2. **Local Distillation:** Optimo-Algo queries the local Ollama instance sequentially or in parallel batches. The prompt to Ollama is strict: *"Summarize the structural logic of this code. Output strictly as TOON objects."*
 3. **Compilation:** The individual outputs are stitched together into an overarching `context.toon` file.
-4. **Handoff:** The user inputs their desired feature request (e.g., "Add a password reset flow"). Optimo-Algo sends the user prompt PLUS the `context.toon` file to the Cloud Agent.
-5. **Execution:** The Cloud Agent, now armed with perfect structural awareness of the entire project but without the token bloat of the raw source code, can accurately pinpoint which files need to be modified. It writes the exact necessary code, which is then applied to the local repository.
+4. **Distillation Modes:**
+    - **Biased Mode (`--focus`)**: Maintains a full architectural map but instructs the local model to provide significantly higher resolution and detail for components related to the focus topic.
+    - **Selective Mode (`--truefocus`)**: Limits the summary (`s`) field to only those components that directly relate to the user's specific area of interest. This produces a "sparse" TOON file that emphasizes one subsystem while keeping others as simple structural placeholders. Saves to custom filename.
+5. **Handoff:** The user inputs their desired feature request (e.g., "Add a password reset flow"). Optimo-Algo sends the user prompt PLUS the `context.toon` file to the Cloud Agent.
+6. **Execution:** The Cloud Agent, now armed with perfect structural awareness of the entire project but without the token bloat of the raw source code, can accurately pinpoint which files need to be modified. It writes the exact necessary code, which is then applied to the local repository.
 
 ## 4. Why This Works
 Modern frontier LLMs are incredibly good at inferring implementation details if they understand the **architecture** and the **signatures**. They do not need to read 10,000 lines of standard React components to know how to add a new route. By feeding them a `.toon` map, you satisfy their contextual requirement while saving up to 90% on input tokens.

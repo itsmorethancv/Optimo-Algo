@@ -30,7 +30,7 @@ OPTIMO_DOCS = """
 
 ### 1. `build`
 Generates a `context.toon` file for your codebase.
-- **Usage:** `optimo build [--workers 4] [--focus "message"]`
+- **Usage:** `optimo build [--workers 4] [--focus "msg"] [--truefocus "msg"]`
 
 ### 2. `watch`
 Monitors your files for changes and automatically rebuilds the `context.toon` file.
@@ -76,17 +76,12 @@ These can be used with any command (e.g., `optimo --path ./src build`).
 - `--setmodel`: Update the default Ollama model in your configuration.
 - `--workers`: Set the number of parallel summarization threads (default: `4`).
 - `--ignore`: Add specific files or folders to the ignore list permanently.
-- `--focus`: (Build only) Explicitly direct the AI to prioritize specific features or logic.
+- `--focus`: Biased summarization. Loosely explains everything, but adds much more detail for the focus topic.
+- `--truefocus`: Selective summarization. Only detailed for focus topic, empty for others. Saves as `context-topic.toon`.
 
 ---
-## 🧠 Detailed: --workers
-The `--workers` flag controls the concurrency level during the codebase distillation process.
-
-1. **Parallel Processing**: Optimo-Algo splits your project into individual files. Each worker handles one file's summarization via Ollama in parallel.
-2. **Performance vs. Stability**: 
-   - **Higher workers (4-8)**: Drastically speeds up the `build` process on modern CPUs/GPUs.
-   - **Lower workers (1-2)**: Recommended if you are running a heavy LLM (like Llama-3-8B) on limited RAM to avoid system crashes or Ollama timeouts.
-3. **Default**: Set to `4` for a balanced experience on most developer machines.
+## 🧠 Detailed: CLI Workflow
+Optimo-Algo splits your project into individual files. Each file's summarization is handled by Ollama. If you have large files, they are automatically chunked to fit the LLM's context window.
 """
 
 def show_help():
@@ -218,9 +213,12 @@ def run_init():
         console.print(f"\n[red]Error during initialization:[/] {e}")
         console.print("[yellow]Please ensure you have an active internet connection and pip is available.[/]")
 
-import concurrent.futures
 
-def run_build(target_dir: str, model_override: str = None, output: str = "context.toon", workers: int = 4, focus: str = None):
+def run_build(target_dir: str, model_override: str = None, output: str = "context.toon", focus: str = None, truefocus: str = None):
+    # Determine output filename for truefocus
+    if truefocus and output == "context.toon":
+        safe_msg = "".join([c if c.isalnum() else "-" for c in truefocus.lower()])[:30].strip("-")
+        output = f"context-{safe_msg}.toon"
     model = model_override if model_override else get_model()
     
     console.print(f"[bold cyan]Scanning directory:[/] [yellow]{target_dir}[/]")
@@ -236,7 +234,7 @@ def run_build(target_dir: str, model_override: str = None, output: str = "contex
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
             tokens = get_token_count(content)
-            toon_dict = generate_toon_for_file(content, rel_name, model=model, focus=focus)
+            toon_dict = generate_toon_for_file(content, rel_name, model=model, focus=focus, truefocus=truefocus)
             return toon_dict, tokens, rel_name
         except Exception as e:
             return None, 0, rel_name
@@ -251,17 +249,15 @@ def run_build(target_dir: str, model_override: str = None, output: str = "contex
     ) as progress:
         task = progress.add_task("[cyan]Distilling codebase...", total=len(files))
         
-        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-            future_to_file = {executor.submit(process_one, f): f for f in files}
-            for future in concurrent.futures.as_completed(future_to_file):
-                res, tokens, rel_name = future.result()
-                if res:
-                    toon_results.append(res)
-                    original_tokens += tokens
-                    progress.update(task, description=f"[green]Done: {rel_name}[/]")
-                else:
-                    progress.update(task, description=f"[red]Failed: {rel_name}[/]")
-                progress.advance(task)
+        for f_path in files:
+            res, tokens, rel_name = process_one(f_path)
+            if res:
+                toon_results.append(res)
+                original_tokens += tokens
+                progress.update(task, description=f"[green]Done: {rel_name}[/]")
+            else:
+                progress.update(task, description=f"[red]Failed: {rel_name}[/]")
+            progress.advance(task)
             
     out_path = compile_toon(target_dir, toon_results, output)
     
@@ -274,15 +270,15 @@ def run_build(target_dir: str, model_override: str = None, output: str = "contex
 
     console.print(f"\n[bold green]Compressed:[/] {original_tokens:,} tokens --> {compressed_tokens:,} tokens")
     console.print(f"[bold green]Saved:[/] {saving:.1f}% tokens")
-    console.print(f"[bold cyan]context.toon is ready at:[/] [underline]{out_path}[/]\n")
+    console.print(f"[bold cyan]{output} is ready at:[/] [underline]{out_path}[/]\n")
     return out_path
 
 class WatchHandler(FileSystemEventHandler):
-    def __init__(self, target_dir, model, workers=4, focus=None):
+    def __init__(self, target_dir, model, focus=None, truefocus=None):
         self.target_dir = target_dir
         self.model = model
-        self.workers = workers
         self.focus = focus
+        self.truefocus = truefocus
         self.last_run = 0
 
     def on_modified(self, event):
@@ -293,7 +289,7 @@ class WatchHandler(FileSystemEventHandler):
         if time.time() - self.last_run < 2: return
         
         console.print(f"[yellow]Change detected in {os.path.basename(event.src_path)}. Rebuilding...[/]")
-        run_build(self.target_dir, self.model, workers=self.workers, focus=self.focus)
+        run_build(self.target_dir, self.model, focus=self.focus, truefocus=self.truefocus)
         self.last_run = time.time()
 
 def main():
@@ -302,9 +298,9 @@ def main():
     parent_parser.add_argument("--path", default=".", help="Target directory (default: current)")
     parent_parser.add_argument("--output", default="context.toon", help="Output TOON filename")
     parent_parser.add_argument("--setmodel", help="Set/Override default Ollama model")
-    parent_parser.add_argument("--workers", type=int, default=4, help="Number of parallel summarization workers (default: 4)")
     parent_parser.add_argument("--ignore", nargs="+", help="Add files/folders to ignore list")
-    parent_parser.add_argument("--focus", help="Direct the AI to focus on specific logic/features during build")
+    parent_parser.add_argument("--focus", help="Biased summarization (loose for all, detail for focus)")
+    parent_parser.add_argument("--truefocus", help="Selective summarization (detail for focus, empty for others). Saves to custom filename.")
 
     parser = argparse.ArgumentParser(prog="optimo", description="Optimo-Algo CLI")
     subparsers = parser.add_subparsers(dest="command")
@@ -352,7 +348,7 @@ def main():
         if not args.command: return
 
     if args.command == "build":
-        run_build(os.path.abspath(args.path), args.setmodel, args.output, args.workers, args.focus)
+        run_build(os.path.abspath(args.path), getattr(args, 'setmodel', None), args.output, args.focus, args.truefocus)
     
     elif args.command == "model":
         model = get_model()
@@ -361,8 +357,8 @@ def main():
     elif args.command == "watch":
         target = os.path.abspath(args.path)
         model = get_model()
-        console.print(f"[bold cyan]Watching {target} for changes... (Model: {model}, Workers: {args.workers}, Focus: {args.focus})[/]")
-        event_handler = WatchHandler(target, model, workers=args.workers, focus=args.focus)
+        console.print(f"[bold cyan]Watching {target} for changes... (Model: {model}, Focus: {args.focus}, TrueFocus: {args.truefocus})[/]")
+        event_handler = WatchHandler(target, model, focus=args.focus, truefocus=args.truefocus)
         observer = Observer()
         observer.schedule(event_handler, target, recursive=True)
         observer.start()
@@ -437,7 +433,7 @@ def main():
         run_init()
     
     else:
-        if not args.ignore and not args.setmodel:
+        if not getattr(args, 'ignore', None) and not getattr(args, 'setmodel', None):
             parser.print_help()
 
 if __name__ == "__main__":

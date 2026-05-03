@@ -158,16 +158,40 @@ def extract_classes_and_functions(file_content: str) -> dict:
     return {"c": classes, "m": functions}
 
 
-def generate_toon_for_file(file_content: str, filename: str, model: str = "gemma3:1b", focus: str = None, retries: int = 3) -> dict:
+def generate_toon_for_file(file_content: str, filename: str, model: str = "gemma3:1b", focus: str = None, truefocus: str = None, retries: int = 3) -> dict:
     """
     Sends file to Ollama for TOON summarization using chunked processing for large files.
     """
-    CHUNK_SIZE = 250
+    # Increased chunk size for fewer LLM calls
+    CHUNK_SIZE = 750
     lines = file_content.splitlines()
     num_lines = len(lines)
     
     # Extract imports globally (local regex, very fast)
     imports = extract_imports_from_code(file_content)
+
+    # FAST PATH: If in selective focus mode (TRUEFOCUS), check if the file is even relevant before calling LLM
+    if truefocus:
+        STOP_WORDS = {'a', 'the', 'an', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'with', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'it', 'its', 'that', 'this', 'all', 'from', 'as'}
+        keywords = [w.strip().lower() for w in truefocus.split() if w.strip().lower() not in STOP_WORDS and len(w.strip()) > 2]
+        
+        # Add context-aware keywords if focus is about options/config
+        if any(k in truefocus.lower() for k in ['option', 'config', 'setting', 'flag', 'cli']):
+            keywords.extend(['config', 'setting', 'opt', 'args', 'param'])
+
+        # If we have keywords, check if any appear in the content OR filename
+        if keywords:
+            search_target = (filename + " " + file_content).lower()
+            if not any(k in search_target for k in keywords):
+                # Skip LLM: return structure only with empty summary
+                fallback = extract_classes_and_functions(file_content)
+                return {
+                    "f": filename,
+                    "s": "",
+                    "c": fallback.get("c", []),
+                    "m": fallback.get("m", []),
+                    "i": imports
+                }
     
     # Create chunks
     if num_lines <= CHUNK_SIZE:
@@ -179,7 +203,21 @@ def generate_toon_for_file(file_content: str, filename: str, model: str = "gemma
     all_classes = set()
     all_methods = set()
     
-    focus_block = f"\n        5. CRITICAL FOCUS: {focus}\n" if focus else ""
+    # Define focus block based on mode (SWAPPED AS PER USER REQUEST)
+    if focus:
+        # Focus is now the BIASED mode (Full project summary + deep detail on topic)
+        focus_block = f"""
+        5. CRITICAL FOCUS: {focus}
+        6. BIASED BRIEFING: Provide a high-level summary for everything, but provide much more detail and depth for parts related to the focus topic.
+        """
+    elif truefocus:
+        # TrueFocus is now the SELECTIVE mode (Sparse/Empty for others)
+        focus_block = f"""
+        5. CRITICAL FOCUS: {truefocus}
+        6. SELECTIVE BRIEFING: If the code is NOT related to the focus topic, return an empty string "" for "s". If it IS related, explain in detail.
+        """
+    else:
+        focus_block = ""
     
     for i, chunk_content in enumerate(chunks):
         segment_info = f" (Part {i+1}/{len(chunks)})" if len(chunks) > 1 else ""

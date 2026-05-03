@@ -199,9 +199,9 @@ Scans your project and generates `context.toon`.
 
 ```bash
 optimo build
-optimo build --workers 8          # Use 8 parallel threads for faster processing
 optimo build --output my.toon     # Custom output filename
-optimo build --focus "backend"    # Prioritize backend logic in summaries
+optimo build --focus "backend"    # Full project summary with deep detail for backend
+optimo build --truefocus "auth"   # Selective: Only summarize auth logic, sparse others
 optimo --path ./backend build     # Target a specific directory
 ```
 
@@ -215,12 +215,20 @@ optimo --path ./backend build     # Target a specific directory
 
 ---
 
+#### Focus Modes
+
+Optimo-Algo supports two specialized modes for directing the AI's attention:
+
+- **`--focus "topic"` (Biased)**: Provides high-level summaries for the entire project, but provides significantly more depth and detail for the focused topic. Use this when you want the AI to understand everything but prioritize one area.
+- **`--truefocus "topic"` (Selective)**: Provides detailed summaries only for code related to the topic, returning empty summaries (`""`) for everything else. It automatically saves to a custom file like `context-topic.toon`. Use this to keep context ultra-minimal for a specific task.
+
+---
+
 #### `optimo watch`
 Runs as a background daemon. Automatically rebuilds `context.toon` whenever a file changes — keeping your context always in sync during active development.
 
 ```bash
 optimo watch
-optimo watch --workers 2          # Lower workers to save RAM during dev
 optimo --path ./src watch
 ```
 
@@ -337,24 +345,9 @@ These flags work with **any** command:
 | `--path <dir>` | Target a different directory instead of `.` | `optimo --path ./backend build` |
 | `--output <name>` | Custom name for the generated TOON file | `optimo --output api.toon build` |
 | `--setmodel <name>` | Switch the active Ollama model permanently | `optimo --setmodel qwen2.5-coder:7b build` |
-| `--workers <int>` | Number of parallel summarization threads | `optimo --workers 8 build` |
 | `--ignore <patterns>` | Permanently add files/folders to the ignore list | `optimo --ignore tests/ docs/ build` |
-| `--focus <msg>` | (Build only) Direct AI to focus on specific logic | `optimo build --focus "database schema"` |
-
----
-
-## Tuning `--workers` for Your Hardware
-
-The `--workers` flag is the most impactful performance control in Optimo-Algo.
-
-| Setup | Recommended Workers | Notes |
-|:---|:---|:---|
-| MacBook / laptop, 8GB RAM | `2` | Avoids memory pressure with IDE + browser open |
-| Desktop, 16GB RAM, no GPU | `4` | Default. Good balance. |
-| Desktop / workstation, GPU | `8` | Maximum throughput. Watch VRAM usage. |
-| CI / headless server | `1` | Safest for constrained environments. |
-
-> Setting workers higher than your hardware supports will cause Ollama timeouts and actually slow down the build. Start at `4` and adjust.
+| `--focus <msg>` | Selective distillation (summarize only the focus topic) | `optimo build --focus "database"` |
+| `--truefocus <msg>` | Biased distillation (deep focus, loose others) | `optimo build --truefocus "auth"` |
 
 ---
 

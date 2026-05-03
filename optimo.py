@@ -8,7 +8,7 @@ import tiktoken
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from rich.console import Console, Group
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, MofNCompleteColumn
 from rich.table import Table
 from rich.panel import Panel
 from rich.markdown import Markdown
@@ -30,7 +30,7 @@ OPTIMO_DOCS = """
 
 ### 1. `build`
 Generates a `context.toon` file for your codebase.
-- **Usage:** `optimo build [--workers 4]`
+- **Usage:** `optimo build [--workers 4] [--focus "message"]`
 
 ### 2. `watch`
 Monitors your files for changes and automatically rebuilds the `context.toon` file.
@@ -76,6 +76,7 @@ These can be used with any command (e.g., `optimo --path ./src build`).
 - `--setmodel`: Update the default Ollama model in your configuration.
 - `--workers`: Set the number of parallel summarization threads (default: `4`).
 - `--ignore`: Add specific files or folders to the ignore list permanently.
+- `--focus`: (Build only) Explicitly direct the AI to prioritize specific features or logic.
 
 ---
 ## 🧠 Detailed: --workers
@@ -219,7 +220,7 @@ def run_init():
 
 import concurrent.futures
 
-def run_build(target_dir: str, model_override: str = None, output: str = "context.toon", workers: int = 4):
+def run_build(target_dir: str, model_override: str = None, output: str = "context.toon", workers: int = 4, focus: str = None):
     model = model_override if model_override else get_model()
     
     console.print(f"[bold cyan]Scanning directory:[/] [yellow]{target_dir}[/]")
@@ -235,7 +236,7 @@ def run_build(target_dir: str, model_override: str = None, output: str = "contex
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
             tokens = get_token_count(content)
-            toon_dict = generate_toon_for_file(content, rel_name, model=model)
+            toon_dict = generate_toon_for_file(content, rel_name, model=model, focus=focus)
             return toon_dict, tokens, rel_name
         except Exception as e:
             return None, 0, rel_name
@@ -243,9 +244,12 @@ def run_build(target_dir: str, model_override: str = None, output: str = "contex
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
+        BarColumn(bar_width=None),
+        TaskProgressColumn(),
+        MofNCompleteColumn(),
         transient=False,
     ) as progress:
-        task = progress.add_task("[cyan]Reading and summarizing...", total=len(files))
+        task = progress.add_task("[cyan]Distilling codebase...", total=len(files))
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
             future_to_file = {executor.submit(process_one, f): f for f in files}
@@ -274,10 +278,11 @@ def run_build(target_dir: str, model_override: str = None, output: str = "contex
     return out_path
 
 class WatchHandler(FileSystemEventHandler):
-    def __init__(self, target_dir, model, workers=4):
+    def __init__(self, target_dir, model, workers=4, focus=None):
         self.target_dir = target_dir
         self.model = model
         self.workers = workers
+        self.focus = focus
         self.last_run = 0
 
     def on_modified(self, event):
@@ -288,38 +293,39 @@ class WatchHandler(FileSystemEventHandler):
         if time.time() - self.last_run < 2: return
         
         console.print(f"[yellow]Change detected in {os.path.basename(event.src_path)}. Rebuilding...[/]")
-        run_build(self.target_dir, self.model, workers=self.workers)
+        run_build(self.target_dir, self.model, workers=self.workers, focus=self.focus)
         self.last_run = time.time()
 
 def main():
+    # Common parent parser for flags that should be available on project-related commands
+    parent_parser = argparse.ArgumentParser(add_help=False)
+    parent_parser.add_argument("--path", default=".", help="Target directory (default: current)")
+    parent_parser.add_argument("--output", default="context.toon", help="Output TOON filename")
+    parent_parser.add_argument("--setmodel", help="Set/Override default Ollama model")
+    parent_parser.add_argument("--workers", type=int, default=4, help="Number of parallel summarization workers (default: 4)")
+    parent_parser.add_argument("--ignore", nargs="+", help="Add files/folders to ignore list")
+    parent_parser.add_argument("--focus", help="Direct the AI to focus on specific logic/features during build")
+
     parser = argparse.ArgumentParser(prog="optimo", description="Optimo-Algo CLI")
-    
-    # Global Options
-    parser.add_argument("--path", default=".", help="Target directory (default: current)")
-    parser.add_argument("--output", default="context.toon", help="Output TOON filename")
-    parser.add_argument("--setmodel", help="Set/Override default Ollama model")
-    parser.add_argument("--workers", type=int, default=4, help="Number of parallel summarization workers (default: 4)")
-    parser.add_argument("--ignore", nargs="+", help="Add files/folders to ignore list")
-    
     subparsers = parser.add_subparsers(dest="command")
 
     # build
-    build_parser = subparsers.add_parser("build", help="Generate context.toon")
+    build_parser = subparsers.add_parser("build", help="Generate context.toon", parents=[parent_parser])
 
     # model
-    model_parser = subparsers.add_parser("model", help="Show current active model")
+    model_parser = subparsers.add_parser("model", help="Show current active model", parents=[parent_parser])
 
     # watch
-    watch_parser = subparsers.add_parser("watch", help="Watch for changes and rebuild")
+    watch_parser = subparsers.add_parser("watch", help="Watch for changes and rebuild", parents=[parent_parser])
 
     # stats
-    stats_parser = subparsers.add_parser("stats", help="Show token compression statistics")
+    stats_parser = subparsers.add_parser("stats", help="Show token compression statistics", parents=[parent_parser])
 
     # view
-    view_parser = subparsers.add_parser("view", help="Visualize context.toon structure and tracing")
+    view_parser = subparsers.add_parser("view", help="Visualize context.toon structure and tracing", parents=[parent_parser])
 
     # clean
-    clean_parser = subparsers.add_parser("clean", help="Delete context.toon")
+    clean_parser = subparsers.add_parser("clean", help="Delete context.toon", parents=[parent_parser])
 
     # help
     help_parser = subparsers.add_parser("help", help="Show detailed usage guide")
@@ -328,25 +334,25 @@ def main():
     listmodels_parser = subparsers.add_parser("listmodels", help="List available Ollama models")
 
     # chat
-    chat_parser = subparsers.add_parser("chat", help="Chat with an AI expert on Optimo-Algo")
+    chat_parser = subparsers.add_parser("chat", help="Chat with an AI expert on Optimo-Algo", parents=[parent_parser])
 
     # init
     init_parser = subparsers.add_parser("init", help="Initialize and install all dependencies")
 
     args = parser.parse_args()
 
-    if args.setmodel:
+    if getattr(args, 'setmodel', None):
         set_model(args.setmodel)
         console.print(f"[green]Model updated in configuration: {args.setmodel}[/]")
         if not args.command: return
 
-    if args.ignore:
+    if getattr(args, 'ignore', None):
         add_ignore(args.ignore)
         console.print(f"[green]Added to ignore list: {args.ignore}[/]")
         if not args.command: return
 
     if args.command == "build":
-        run_build(os.path.abspath(args.path), args.setmodel, args.output, args.workers)
+        run_build(os.path.abspath(args.path), args.setmodel, args.output, args.workers, args.focus)
     
     elif args.command == "model":
         model = get_model()
@@ -355,8 +361,8 @@ def main():
     elif args.command == "watch":
         target = os.path.abspath(args.path)
         model = get_model()
-        console.print(f"[bold cyan]Watching {target} for changes... (Model: {model}, Workers: {args.workers})[/]")
-        event_handler = WatchHandler(target, model, workers=args.workers)
+        console.print(f"[bold cyan]Watching {target} for changes... (Model: {model}, Workers: {args.workers}, Focus: {args.focus})[/]")
+        event_handler = WatchHandler(target, model, workers=args.workers, focus=args.focus)
         observer = Observer()
         observer.schedule(event_handler, target, recursive=True)
         observer.start()

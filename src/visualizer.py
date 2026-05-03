@@ -142,6 +142,12 @@ class ToonVisualizer(ctk.CTk):
     def draw_graph(self):
         self.canvas.delete("all")
         
+        analysis = self.toon_data.get("analysis", {})
+        importance = analysis.get("importance", {})
+        hubs = analysis.get("hubs", [])
+        critical = analysis.get("critical_path", [])
+        isolated = analysis.get("isolated", [])
+
         # Draw Arrows first (so they are behind nodes)
         if self.trace_var.get():
             deps_map = self.toon_data.get("deps", {}).get("map", {})
@@ -149,6 +155,7 @@ class ToonVisualizer(ctk.CTk):
                 if src_file in self.nodes:
                     sx, sy = self.nodes[src_file]
                     for imp in info.get("i", []):
+                        imp = imp.replace("\\", "/") # Normalize for lookup
                         if imp in self.nodes:
                             tx, ty = self.nodes[imp]
                             self.draw_arrow(sx, sy, tx, ty, color="#3498db")
@@ -156,19 +163,26 @@ class ToonVisualizer(ctk.CTk):
         # Draw Nodes and bind events
         self.node_ids = {}
         for fname, (x, y) in self.nodes.items():
-            tag = f"node_{fname.replace('/', '_')}"
+            tag = f"node_{fname.replace('/', '_').replace('.', '_').replace('-', '_')}"
             
-            # Shadow/Ring
-            self.canvas.create_oval(x-15, y-15, x+15, y+15, fill="#2c3e50", outline="#34495e", width=4, tags=(tag, "node"))
-            # Core
-            node_id = self.canvas.create_oval(x-12, y-12, x+12, y+12, fill="#1f538d", outline="white", width=2, tags=(tag, "node"))
-            # Text
-            text_id = self.canvas.create_text(x, y+28, text=os.path.basename(fname), fill="white", 
+            score = importance.get(fname, 0)
+            is_hub = fname in hubs or fname in critical
+            is_isolated = fname in isolated
+            
+            radius = min(30, 12 + (score * 1.5))
+            color = "#1f538d"
+            if is_hub: color = "#e74c3c"
+            elif is_isolated: color = "#7f8c8d"
+
+            self.canvas.create_oval(x-radius-3, y-radius-3, x+radius+3, y+radius+3, fill="#2c3e50", outline="#34495e", width=2, tags=(tag, "node"))
+            node_id = self.canvas.create_oval(x-radius, y-radius, x+radius, y+radius, fill=color, outline="white", width=2, tags=(tag, "node"))
+            
+            text_id = self.canvas.create_text(x, y+radius+15, text=os.path.basename(fname), fill="white", 
                                              font=("Arial", 11, "bold"), tags=(tag, "node"))
+            self.canvas.create_text(x, y+radius+28, text=f"Score: {score}", fill="#bdc3c7", 
+                                   font=("Arial", 9), tags=(tag, "node"))
             
             self.node_ids[fname] = (node_id, text_id)
-            
-            # Rebind drag & move to these specific tags
             self.canvas.tag_bind(tag, "<ButtonPress-1>", lambda e, name=fname: self.on_node_press(e, name))
             self.canvas.tag_bind(tag, "<B1-Motion>", self.on_node_motion)
 
@@ -180,29 +194,21 @@ class ToonVisualizer(ctk.CTk):
     def on_node_motion(self, event):
         fname = self.drag_data["name"]
         if not fname: return
-
-        # Calculate delta
         dx = event.x - self.drag_data["x"]
         dy = event.y - self.drag_data["y"]
-        
-        # Update node data
         cx, cy = self.nodes[fname]
         self.nodes[fname] = (cx + dx, cy + dy)
-        
-        # Update drag reference
         self.drag_data["x"] = event.x
         self.drag_data["y"] = event.y
-        
-        # Fast Redraw
         self.draw_graph()
 
     def draw_arrow(self, x1, y1, x2, y2, color="#3498db"):
         angle = math.atan2(y2 - y1, x2 - x1)
-        offset = 18
+        offset = 25
         nx1, ny1 = x1 + offset * math.cos(angle), y1 + offset * math.sin(angle)
         nx2, ny2 = x2 - offset * math.cos(angle), y2 - offset * math.sin(angle)
         self.canvas.create_line(nx1, ny1, nx2, ny2, fill=color, arrow=tk.LAST, width=2, 
-                                arrowshape=(12,14,6), smooth=True)
+                                arrowshape=(10,12,5), smooth=True)
 
     def update_view(self):
         self.draw_graph()

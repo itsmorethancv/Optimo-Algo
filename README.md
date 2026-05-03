@@ -201,6 +201,7 @@ Scans your project and generates `context.toon`.
 optimo build
 optimo build --workers 8          # Use 8 parallel threads for faster processing
 optimo build --output my.toon     # Custom output filename
+optimo build --focus "backend"    # Prioritize backend logic in summaries
 optimo --path ./backend build     # Target a specific directory
 ```
 
@@ -338,6 +339,7 @@ These flags work with **any** command:
 | `--setmodel <name>` | Switch the active Ollama model permanently | `optimo --setmodel qwen2.5-coder:7b build` |
 | `--workers <int>` | Number of parallel summarization threads | `optimo --workers 8 build` |
 | `--ignore <patterns>` | Permanently add files/folders to the ignore list | `optimo --ignore tests/ docs/ build` |
+| `--focus <msg>` | (Build only) Direct AI to focus on specific logic | `optimo build --focus "database schema"` |
 
 ---
 

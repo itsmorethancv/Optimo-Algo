@@ -346,8 +346,8 @@ These flags work with **any** command:
 | `--output <name>` | Custom name for the generated TOON file | `optimo --output api.toon build` |
 | `--setmodel <name>` | Switch the active Ollama model permanently | `optimo --setmodel qwen2.5-coder:7b build` |
 | `--ignore <patterns>` | Permanently add files/folders to the ignore list | `optimo --ignore tests/ docs/ build` |
-| `--focus <msg>` | Selective distillation (summarize only the focus topic) | `optimo build --focus "database"` |
-| `--truefocus <msg>` | Biased distillation (deep focus, loose others) | `optimo build --truefocus "auth"` |
+| `--focus <msg>` | Biased distillation (deep focus, loose others) | `optimo build --focus "database"` |
+| `--truefocus <msg>` | Selective distillation (summarize only the focus topic) | `optimo build --truefocus "auth"` |
 
 ---
 

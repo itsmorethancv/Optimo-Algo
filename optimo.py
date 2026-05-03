@@ -5,6 +5,7 @@ import sys
 import time
 import json
 import tiktoken
+import signal
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from rich.console import Console, Group
@@ -19,6 +20,10 @@ from src.llm import generate_toon_for_file
 from src.compiler import compile_toon
 from src.config import get_model, set_model, add_ignore, get_extra_ignores
 
+# Force UTF-8 on Windows to handle emojis in Rich output
+if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding='utf-8')
+
 console = Console()
 
 OPTIMO_DOCS = """
@@ -30,7 +35,7 @@ OPTIMO_DOCS = """
 
 ### 1. `build`
 Generates a `context.toon` file for your codebase.
-- **Usage:** `optimo build [--workers 4] [--focus "msg"] [--truefocus "msg"]`
+- **Usage:** `optimo build [--focus "msg"] [--truefocus "msg"]`
 
 ### 2. `watch`
 Monitors your files for changes and automatically rebuilds the `context.toon` file.
@@ -74,7 +79,6 @@ These can be used with any command (e.g., `optimo --path ./src build`).
 - `--path`: Specify the target project directory (default: `.`)
 - `--output`: Specify the output TOON file (default: `context.toon`)
 - `--setmodel`: Update the default Ollama model in your configuration.
-- `--workers`: Set the number of parallel summarization threads (default: `4`).
 - `--ignore`: Add specific files or folders to the ignore list permanently.
 - `--focus`: Biased summarization. Loosely explains everything, but adds much more detail for the focus topic.
 - `--truefocus`: Selective summarization. Only detailed for focus topic, empty for others. Saves as `context-topic.toon`.
